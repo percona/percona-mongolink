@@ -483,8 +483,11 @@ func (cm *CopyManager) insertBatch(ctx context.Context, task insertBatchTask) {
 
 	startedAt := time.Now()
 
+	c, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+
 	collection := cm.target.Database(task.Namespace.Database).Collection(task.Namespace.Collection)
-	_, err := collection.InsertMany(ctx, task.Documents, insertOptions)
+	_, err := collection.InsertMany(c, task.Documents, insertOptions)
 	if topo.IsRetryableWrite(err) {
 		zl.Warn().
 			Err(err).
