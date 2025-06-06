@@ -1,4 +1,4 @@
-pml /usr/bin/
-default/pml /etc/default/
-pml.service /lib/systemd/system/
-LICENSE /usr/share/doc/percona-mongolink/
+debian/tmp/plm /usr/bin/
+debian/tmp/default/plm /etc/default/
+debian/tmp/plm.service /lib/systemd/system/
+debian/tmp/LICENSE /usr/share/doc/percona-link-mongodb/

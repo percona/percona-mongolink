@@ -1,4 +1,4 @@
-package mongolink
+package plm
 
 import (
 	"context"
@@ -11,13 +11,13 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 
-	"github.com/percona/percona-mongolink/config"
-	"github.com/percona/percona-mongolink/errors"
-	"github.com/percona/percona-mongolink/log"
-	"github.com/percona/percona-mongolink/metrics"
-	"github.com/percona/percona-mongolink/sel"
-	"github.com/percona/percona-mongolink/topo"
-	"github.com/percona/percona-mongolink/util"
+	"github.com/percona/percona-link-mongodb/config"
+	"github.com/percona/percona-link-mongodb/errors"
+	"github.com/percona/percona-link-mongodb/log"
+	"github.com/percona/percona-link-mongodb/metrics"
+	"github.com/percona/percona-link-mongodb/sel"
+	"github.com/percona/percona-link-mongodb/topo"
+	"github.com/percona/percona-link-mongodb/util"
 )
 
 var (
@@ -420,7 +420,7 @@ func (r *Repl) watchChangeEvents(
 			return errors.Wrap(err, "cursor")
 		}
 
-		// no event available yet. progress mongolink time
+		// no event available yet. progress plm time
 		if sourceTS.After(lastEventTS) {
 			changeC <- &ChangeEvent{
 				EventHeader: EventHeader{
@@ -481,7 +481,7 @@ func (r *Repl) run(opts *options.ChangeStreamOptionsBuilder) {
 			continue
 		}
 
-		if change.Namespace.Database == config.MongoLinkDatabase {
+		if change.Namespace.Database == config.PLMDatabase {
 			if r.bulkWrite.Empty() {
 				r.lock.Lock()
 				r.lastReplicatedOpTime = change.ClusterTime

@@ -5,7 +5,7 @@ import time
 
 import pytest
 import testing
-from mlink import MongoLink
+from mlink import PLM
 from pymongo import MongoClient
 
 
@@ -13,8 +13,8 @@ def pytest_addoption(parser):
     """Add custom command-line options to pytest."""
     parser.addoption("--source-uri", help="MongoDB URI for source")
     parser.addoption("--target-uri", help="MongoDB URI for target")
-    parser.addoption("--mongolink-url", help="MongoLink url")
-    parser.addoption("--mongolink-bin", help="Path to the MongoLink binary")
+    parser.addoption("--plm_url", help="PLM url")
+    parser.addoption("--plm-bin", help="Path to the PLM binary")
     parser.addoption("--runslow", action="store_true", default=False, help="run slow tests")
 
 
@@ -53,19 +53,19 @@ def target_conn(request: pytest.FixtureRequest):
 
 @pytest.fixture(scope="session")
 def mlink(request: pytest.FixtureRequest):
-    """Provide a mongolink instance."""
-    url = request.config.getoption("--mongolink-url") or os.environ["TEST_MONGOLINK_URL"]
-    return MongoLink(url)
+    """Provide a plm instance."""
+    url = request.config.getoption("--plm_url") or os.environ["TEST_PLM_URL"]
+    return PLM(url)
 
 
 @pytest.fixture(scope="session")
-def mlink_bin(request: pytest.FixtureRequest):
-    """Provide the path to the MongoLink binary."""
-    return request.config.getoption("--mongolink-bin") or os.getenv("TEST_MONGOLINK_BIN")
+def plm_bin(request: pytest.FixtureRequest):
+    """Provide the path to the PLM binary."""
+    return request.config.getoption("--plm-bin") or os.getenv("TEST_PLM_BIN")
 
 
 @pytest.fixture(scope="session")
-def t(source_conn: MongoClient, target_conn: MongoClient, mlink: MongoLink):
+def t(source_conn: MongoClient, target_conn: MongoClient, mlink: PLM):
     return testing.Testing(source_conn, target_conn, mlink)
 
 
@@ -76,36 +76,36 @@ def drop_all_database(source_conn: MongoClient, target_conn: MongoClient):
     testing.drop_all_database(target_conn)
 
 
-MLINK_PROC: subprocess.Popen = None
+PML_PROC: subprocess.Popen = None
 
 
-def start_mongolink(mlink_bin: str):
-    rv = subprocess.Popen([mlink_bin, "--reset-state", "--log-level=trace"])
+def start_plm(plm_bin: str):
+    rv = subprocess.Popen([plm_bin, "--reset-state", "--log-level=trace"])
     time.sleep(1)
     return rv
 
 
-def stop_mongolink(proc: subprocess.Popen):
+def stop_plm(proc: subprocess.Popen):
     proc.terminate()
     return proc.wait()
 
 
 @pytest.fixture(scope="session", autouse=True)
-def manage_mongolink_process(request: pytest.FixtureRequest, mlink_bin: str):
-    """Start mongolink before tests and terminate it after all tests."""
-    if not mlink_bin:
+def manage_plm_process(request: pytest.FixtureRequest, plm_bin: str):
+    """Start plm before tests and terminate it after all tests."""
+    if not plm_bin:
         yield
         return
 
-    global MLINK_PROC  # pylint: disable=W0603
-    MLINK_PROC = start_mongolink(mlink_bin)
+    global PML_PROC  # pylint: disable=W0603
+    PML_PROC = start_plm(plm_bin)
 
     def teardown():
-        if MLINK_PROC and MLINK_PROC.poll() is None:
-            stop_mongolink(MLINK_PROC)
+        if PML_PROC and PML_PROC.poll() is None:
+            stop_plm(PML_PROC)
 
     request.addfinalizer(teardown)
-    yield MLINK_PROC
+    yield PML_PROC
 
 
 @pytest.hookimpl(hookwrapper=True)
@@ -117,12 +117,12 @@ def pytest_runtest_makereport(item, call):  # pylint: disable=W0613
 
 
 @pytest.fixture(autouse=True)
-def restart_mongolink_on_failure(request: pytest.FixtureRequest, mlink_bin: str):
+def restart_plm_on_failure(request: pytest.FixtureRequest, plm_bin: str):
     yield
 
     if hasattr(request.node, "rep_call") and request.node.rep_call.failed:
-        # the test failed. restart mongolink process with a new state
-        global MLINK_PROC  # pylint: disable=W0603
-        if MLINK_PROC and mlink_bin:
-            stop_mongolink(MLINK_PROC)
-            MLINK_PROC = start_mongolink(mlink_bin)
+        # the test failed. restart plm process with a new state
+        global PML_PROC  # pylint: disable=W0603
+        if PML_PROC and plm_bin:
+            stop_plm(PML_PROC)
+            PML_PROC = start_plm(plm_bin)

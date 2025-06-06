@@ -1,9 +1,9 @@
 /*
-Package mongolink provides functionality for cloning and replicating data between MongoDB clusters.
+Package plm provides functionality for cloning and replicating data between MongoDB clusters.
 
 This package includes the following main components:
 
-  - MongoLink: Manages the overall replication process, including cloning and change replication.
+  - PLM: Manages the overall replication process, including cloning and change replication.
 
   - Clone: Handles the cloning of data from a source MongoDB cluster to a target MongoDB cluster.
 
@@ -11,7 +11,7 @@ This package includes the following main components:
 
   - Catalog: Manages collections and indexes in the target MongoDB cluster.
 */
-package mongolink
+package plm
 
 import (
 	"context"
@@ -22,37 +22,37 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 
-	"github.com/percona/percona-mongolink/config"
-	"github.com/percona/percona-mongolink/errors"
-	"github.com/percona/percona-mongolink/log"
-	"github.com/percona/percona-mongolink/metrics"
-	"github.com/percona/percona-mongolink/sel"
-	"github.com/percona/percona-mongolink/topo"
+	"github.com/percona/percona-link-mongodb/config"
+	"github.com/percona/percona-link-mongodb/errors"
+	"github.com/percona/percona-link-mongodb/log"
+	"github.com/percona/percona-link-mongodb/metrics"
+	"github.com/percona/percona-link-mongodb/sel"
+	"github.com/percona/percona-link-mongodb/topo"
 )
 
-// State represents the state of the MongoLink.
+// State represents the state of the PLM.
 type State string
 
 const (
-	// StateFailed indicates that the mongolink has failed.
+	// StateFailed indicates that the plm has failed.
 	StateFailed = "failed"
-	// StateIdle indicates that the mongolink is idle.
+	// StateIdle indicates that the plm is idle.
 	StateIdle = "idle"
-	// StateRunning indicates that the mongolink is running.
+	// StateRunning indicates that the plm is running.
 	StateRunning = "running"
-	// StatePaused indicates that the mongolink is paused.
+	// StatePaused indicates that the plm is paused.
 	StatePaused = "paused"
-	// StateFinalizing indicates that the mongolink is finalizing.
+	// StateFinalizing indicates that the plm is finalizing.
 	StateFinalizing = "finalizing"
-	// StateFinalized indicates that the mongolink has been finalized.
+	// StateFinalized indicates that the plm has been finalized.
 	StateFinalized = "finalized"
 )
 
 type OnStateChangedFunc func(newState State)
 
-// Status represents the status of the MongoLink.
+// Status represents the status of the PLM.
 type Status struct {
-	// State is the current state of the MongoLink.
+	// State is the current state of the PLM.
 	State State
 	// Error is the error message if the operation failed.
 	Error error
@@ -70,8 +70,8 @@ type Status struct {
 	Clone CloneStatus
 }
 
-// MongoLink manages the replication process.
-type MongoLink struct {
+// PLM manages the replication process.
+type PLM struct {
 	source *mongo.Client // Source MongoDB client
 	target *mongo.Client // Target MongoDB client
 
@@ -83,7 +83,7 @@ type MongoLink struct {
 
 	pauseOnInitialSync bool
 
-	state State // Current state of the MongoLink
+	state State // Current state of the PLM
 
 	catalog *Catalog // Catalog for managing collections and indexes
 	clone   *Clone   // Clone process
@@ -94,9 +94,9 @@ type MongoLink struct {
 	lock sync.Mutex
 }
 
-// New creates a new MongoLink.
-func New(source, target *mongo.Client) *MongoLink {
-	return &MongoLink{
+// New creates a new PLM.
+func New(source, target *mongo.Client) *PLM {
+	return &PLM{
 		source:         source,
 		target:         target,
 		state:          StateIdle,
@@ -116,7 +116,7 @@ type checkpoint struct {
 	Error string `bson:"error,omitempty"`
 }
 
-func (ml *MongoLink) Checkpoint(context.Context) ([]byte, error) {
+func (ml *PLM) Checkpoint(context.Context) ([]byte, error) {
 	ml.lock.Lock()
 	defer ml.lock.Unlock()
 
@@ -146,12 +146,12 @@ func (ml *MongoLink) Checkpoint(context.Context) ([]byte, error) {
 	return bson.Marshal(cp) //nolint:wrapcheck
 }
 
-func (ml *MongoLink) Recover(ctx context.Context, data []byte) error {
+func (ml *PLM) Recover(ctx context.Context, data []byte) error {
 	ml.lock.Lock()
 	defer ml.lock.Unlock()
 
 	if ml.state != StateIdle {
-		return errors.New("cannot recover: invalid MongoLink state")
+		return errors.New("cannot recover: invalid PLM state")
 	}
 
 	var cp checkpoint
@@ -211,7 +211,7 @@ func (ml *MongoLink) Recover(ctx context.Context, data []byte) error {
 }
 
 // SetOnStateChanged set the f function to be called on each state change.
-func (ml *MongoLink) SetOnStateChanged(f OnStateChangedFunc) {
+func (ml *PLM) SetOnStateChanged(f OnStateChangedFunc) {
 	if f == nil {
 		f = func(State) {}
 	}
@@ -221,8 +221,8 @@ func (ml *MongoLink) SetOnStateChanged(f OnStateChangedFunc) {
 	ml.lock.Unlock()
 }
 
-// Status returns the current status of the MongoLink.
-func (ml *MongoLink) Status(ctx context.Context) *Status {
+// Status returns the current status of the PLM.
+func (ml *PLM) Status(ctx context.Context) *Status {
 	ml.lock.Lock()
 	defer ml.lock.Unlock()
 
@@ -258,7 +258,7 @@ func (ml *MongoLink) Status(ctx context.Context) *Status {
 	sourceTime, err := topo.ClusterTime(ctx, ml.source)
 	if err != nil {
 		// Do not block status if source cluster is lost
-		log.New("mongolink").Error(err, "Status: get source cluster time")
+		log.New("plm").Error(err, "Status: get source cluster time")
 	} else {
 		switch {
 		case !s.Repl.LastReplicatedOpTime.IsZero():
@@ -275,13 +275,13 @@ func (ml *MongoLink) Status(ctx context.Context) *Status {
 	return s
 }
 
-func (ml *MongoLink) resetError() {
+func (ml *PLM) resetError() {
 	ml.err = nil
 	ml.clone.resetError()
 	ml.repl.resetError()
 }
 
-// StartOptions represents the options for starting the MongoLink.
+// StartOptions represents the options for starting the PLM.
 type StartOptions struct {
 	// PauseOnInitialSync indicates whether to finalize after the initial sync.
 	PauseOnInitialSync bool
@@ -292,20 +292,20 @@ type StartOptions struct {
 }
 
 // Start starts the replication process with the given options.
-func (ml *MongoLink) Start(_ context.Context, options *StartOptions) error {
+func (ml *PLM) Start(_ context.Context, options *StartOptions) error {
 	ml.lock.Lock()
 	defer ml.lock.Unlock()
 
 	switch ml.state {
 	case StateRunning, StateFinalizing, StateFailed:
 		err := errors.New("already running")
-		log.New("mongolink:start").Error(err, "")
+		log.New("plm:start").Error(err, "")
 
 		return err
 
 	case StatePaused:
 		err := errors.New("paused")
-		log.New("mongolink:start").Error(err, "")
+		log.New("plm:start").Error(err, "")
 
 		return err
 	}
@@ -328,23 +328,23 @@ func (ml *MongoLink) Start(_ context.Context, options *StartOptions) error {
 	return nil
 }
 
-func (ml *MongoLink) setFailed(err error) {
+func (ml *PLM) setFailed(err error) {
 	ml.lock.Lock()
 	ml.state = StateFailed
 	ml.err = err
 	ml.lock.Unlock()
 
-	log.New("mongolink").Error(err, "Cluster Replication has failed")
+	log.New("plm").Error(err, "Cluster Replication has failed")
 
 	go ml.onStateChanged(StateFailed)
 }
 
 // run executes the cluster replication.
-func (ml *MongoLink) run() {
+func (ml *PLM) run() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	lg := log.New("mongolink")
+	lg := log.New("plm")
 
 	lg.Info("Starting Cluster Replication")
 
@@ -397,7 +397,7 @@ func (ml *MongoLink) run() {
 	}
 }
 
-func (ml *MongoLink) monitorInitialSync(ctx context.Context) {
+func (ml *PLM) monitorInitialSync(ctx context.Context) {
 	lg := log.New("monitor:initial-sync-lag-time")
 
 	t := time.NewTicker(time.Second)
@@ -463,7 +463,7 @@ func (ml *MongoLink) monitorInitialSync(ctx context.Context) {
 	}
 }
 
-func (ml *MongoLink) monitorLagTime(ctx context.Context) {
+func (ml *PLM) monitorLagTime(ctx context.Context) {
 	lg := log.New("monitor:lag-time")
 
 	t := time.NewTicker(time.Second)
@@ -508,23 +508,23 @@ func (ml *MongoLink) monitorLagTime(ctx context.Context) {
 }
 
 // Pause pauses the replication process.
-func (ml *MongoLink) Pause(ctx context.Context) error {
+func (ml *PLM) Pause(ctx context.Context) error {
 	ml.lock.Lock()
 	defer ml.lock.Unlock()
 
 	err := ml.doPause(ctx)
 	if err != nil {
-		log.New("mongolink").Error(err, "Pause Cluster Replication")
+		log.New("plm").Error(err, "Pause Cluster Replication")
 
 		return err
 	}
 
-	log.New("mongolink").Info("Cluster Replication paused")
+	log.New("plm").Info("Cluster Replication paused")
 
 	return nil
 }
 
-func (ml *MongoLink) doPause(ctx context.Context) error {
+func (ml *PLM) doPause(ctx context.Context) error {
 	if ml.state != StateRunning {
 		return errors.New("cannot pause: not running")
 	}
@@ -551,7 +551,7 @@ type ResumeOptions struct {
 }
 
 // Resume resumes the replication process.
-func (ml *MongoLink) Resume(ctx context.Context, options ResumeOptions) error {
+func (ml *PLM) Resume(ctx context.Context, options ResumeOptions) error {
 	ml.lock.Lock()
 	defer ml.lock.Unlock()
 
@@ -561,17 +561,17 @@ func (ml *MongoLink) Resume(ctx context.Context, options ResumeOptions) error {
 
 	err := ml.doResume(ctx, options.ResumeFromFailure)
 	if err != nil {
-		log.New("mongolink").Error(err, "Resume Cluster Replication")
+		log.New("plm").Error(err, "Resume Cluster Replication")
 
 		return err
 	}
 
-	log.New("mongolink").Info("Cluster Replication resumed")
+	log.New("plm").Info("Cluster Replication resumed")
 
 	return nil
 }
 
-func (ml *MongoLink) doResume(_ context.Context, fromFailure bool) error {
+func (ml *PLM) doResume(_ context.Context, fromFailure bool) error {
 	replStatus := ml.repl.Status()
 
 	if !replStatus.IsStarted() && !fromFailure {
@@ -596,7 +596,7 @@ type FinalizeOptions struct {
 }
 
 // Finalize finalizes the replication process.
-func (ml *MongoLink) Finalize(ctx context.Context, options FinalizeOptions) error {
+func (ml *PLM) Finalize(ctx context.Context, options FinalizeOptions) error {
 	status := ml.Status(ctx)
 
 	ml.lock.Lock()
@@ -636,8 +636,8 @@ func (ml *MongoLink) Finalize(ctx context.Context, options FinalizeOptions) erro
 
 		err = ml.repl.Status().Err
 		if err != nil {
-			// no need to set the MongoLink failed status here.
-			// [MongoLink.setFailed] is called in [MongoLink.run].
+			// no need to set the PLM failed status here.
+			// [PLM.setFailed] is called in [PLM.run].
 			return errors.Wrap(err, "post-pause change replication")
 		}
 	}
@@ -663,7 +663,7 @@ func (ml *MongoLink) Finalize(ctx context.Context, options FinalizeOptions) erro
 		go ml.onStateChanged(StateFinalized)
 	}()
 
-	log.New("mongolink").Info("Finalizing")
+	log.New("plm").Info("Finalizing")
 
 	go ml.onStateChanged(StateFinalizing)
 

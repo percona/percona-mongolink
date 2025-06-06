@@ -7,10 +7,10 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 
-	"github.com/percona/percona-mongolink/config"
-	"github.com/percona/percona-mongolink/errors"
-	"github.com/percona/percona-mongolink/log"
-	"github.com/percona/percona-mongolink/util"
+	"github.com/percona/percona-link-mongodb/config"
+	"github.com/percona/percona-link-mongodb/errors"
+	"github.com/percona/percona-link-mongodb/log"
+	"github.com/percona/percona-link-mongodb/util"
 )
 
 // errMissingClusterTime is returned when the cluster time is missing.
@@ -35,7 +35,7 @@ func ClusterTime(ctx context.Context, m *mongo.Client) (bson.Timestamp, error) {
 func AdvanceClusterTime(ctx context.Context, m *mongo.Client) (bson.Timestamp, error) {
 	raw, err := m.Database("admin").RunCommand(ctx, bson.D{
 		{"appendOplogNote", 1},
-		{"data", bson.D{{"msg", "mongolink:tick"}}},
+		{"data", bson.D{{"msg", "plm:tick"}}},
 	}).Raw()
 	if err != nil {
 		return bson.Timestamp{}, err //nolint:wrapcheck
